@@ -6,12 +6,12 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export const env = createEnv({
-server: {
-  SUPABASE_URL: z.string().min(1),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  CLERK_SECRET_KEY: z.string().min(1),
-  CLERK_PUBLISHABLE_KEY: z.string().min(1),
-  ANTHROPIC_API_KEY: z.string().min(1),
-},
+  server: {
+    SUPABASE_URL: z.string().min(1),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+    CLERK_SECRET_KEY: z.string().min(1),
+    CLERK_PUBLISHABLE_KEY: z.string().min(1),
+    ANTHROPIC_API_KEY: z.string().min(1),
+  },
   runtimeEnv: process.env,
 });

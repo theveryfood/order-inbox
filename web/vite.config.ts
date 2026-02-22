@@ -3,10 +3,13 @@ import react from "@vitejs/plugin-react";
 import { skybridge } from "skybridge/web";
 import { defineConfig, type PluginOption } from "vite";
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [skybridge() as PluginOption, react()],
   root: __dirname,
+  build: {
+    outDir: path.resolve(__dirname, "./dist"),
+    emptyOutDir: true,
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
