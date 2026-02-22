@@ -5,81 +5,77 @@ export const supabase = createClient(
   env.SUPABASE_URL,
   env.SUPABASE_SERVICE_ROLE_KEY,
 );
+console.log("Supabase URL:", env.SUPABASE_URL);
+console.log("Supabase key prefix:", env.SUPABASE_SERVICE_ROLE_KEY.slice(0, 12), "len:", env.SUPABASE_SERVICE_ROLE_KEY.length);
 
-interface Action {
-  type: "add" | "delete" | "toggle" | "move";
-  title?: string;
-  priority?: "low" | "medium" | "high";
-  dueDate?: string;
-  taskId?: string;
-  status?: "todo" | "in_progress" | "done";
+export interface OrderItem {
+  product: string;
+  quantity: number;
 }
 
-export async function executeActions(userId: string, actions: Action[]) {
-  await Promise.all(
-    actions.map((action) => {
-      switch (action.type) {
-        case "add": {
-          if (!action.title) return;
-          return supabase.from("tasks").insert({
-            user_id: userId,
-            title: action.title,
-            priority: action.priority || "medium",
-            due_date: action.dueDate || null,
-            completed: false,
-          });
-        }
-        case "toggle": {
-          if (!action.taskId) return;
-          return supabase.rpc("toggle_task", {
-            p_task_id: action.taskId,
-            p_user_id: userId,
-          });
-        }
-        case "move": {
-          if (!action.taskId || !action.status) return;
-          return supabase
-            .from("tasks")
-            .update({
-              status: action.status,
-              completed: action.status === "done",
-            })
-            .eq("id", action.taskId)
-            .eq("user_id", userId);
-        }
-        case "delete": {
-          if (!action.taskId) return;
-          return supabase
-            .from("tasks")
-            .delete()
-            .eq("id", action.taskId)
-            .eq("user_id", userId);
-        }
-      }
-    }),
-  );
+export interface Order {
+  id: string;
+  userId: string;
+  rawMessage: string;
+  customerName: string;
+  items: OrderItem[];
+  deliveryDate: string | null;
+  status: "pending" | "confirmed" | "fulfilled" | "cancelled";
+  createdAt: string;
 }
 
-export async function fetchTasks(userId: string) {
-  const { data: tasks, error } = await supabase
-    .from("tasks")
-    .select("id, title, completed, priority, due_date, created_at, status")
+export async function insertOrder(
+  userId: string,
+  rawMessage: string,
+  customerName: string,
+  items: OrderItem[],
+  deliveryDate: string | null,
+) {
+  const { error } = await supabase.from("orders").insert({
+    user_id: userId,
+    raw_message: rawMessage,
+    customer_name: customerName,
+    items,
+    delivery_date: deliveryDate || null,
+    status: "pending",
+  });
+  return { error };
+}
+
+export async function fetchOrders(userId: string) {
+  const { data, error } = await supabase
+    .from("orders")
+    .select(
+      "id, user_id, raw_message, customer_name, items, delivery_date, status, created_at",
+    )
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
-  if (error) {
-    return { tasks: [], error };
-  }
+  if (error) return { orders: [], error };
 
-  const formattedTasks = (tasks || []).map((t) => ({
-    id: t.id,
-    title: t.title,
-    completed: t.completed,
-    priority: t.priority,
-    dueDate: t.due_date,
-    createdAt: t.created_at,
-    status: t.status || "todo",
+  const orders: Order[] = (data || []).map((o) => ({
+    id: o.id,
+    userId: o.user_id,
+    rawMessage: o.raw_message,
+    customerName: o.customer_name,
+    items: o.items as OrderItem[],
+    deliveryDate: o.delivery_date,
+    status: o.status,
+    createdAt: o.created_at,
   }));
 
-  return { tasks: formattedTasks, error: null };
+  return { orders, error: null };
+}
+
+export async function updateOrderStatus(
+  orderId: string,
+  userId: string,
+  status: "confirmed" | "fulfilled" | "cancelled",
+) {
+  const { error } = await supabase
+    .from("orders")
+    .update({ status })
+    .eq("id", orderId)
+    .eq("user_id", userId);
+  return { error };
 }

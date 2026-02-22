@@ -82,11 +82,10 @@ cp .env.example .env
 Fill in your keys:
 
 ```
-SUPABASE_URL=[https://rrazohgdtrtnpnthfjpc.supabase.co]
-SUPABASE_SERVICE_ROLE_KEY=sb_secret_tJ5fq
-x_8vcsnyAQlNDROhg_62N5YdD9
-CLERK_SECRET_KEY=sk_test_H7nZjQtfrwA3GPTGFI2wFy6Y1ZOrzWP7AaldAhGduJ
-CLERK_PUBLISHABLE_KEY=pk_test_cmVmaW5lZC1tb25pdG9yLTg1LmNsZXJrLmFjY291bnRzLmRldiQ
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+CLERK_SECRET_KEY=sk_test_xxxxx
+CLERK_PUBLISHABLE_KEY=pk_test_xxxxx
 ```
 
 **3. Link your Supabase project and push migrations**

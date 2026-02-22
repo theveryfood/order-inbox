@@ -1,29 +1,20 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { McpServer } from "skybridge/server";
 import { z } from "zod";
 import { env } from "./env.js";
-import { executeActions, fetchTasks } from "./supabase.js";
+import { insertOrder, fetchOrders } from "./supabase.js";
+
+const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
 const SERVER_URL = "http://localhost:3000";
 
-const ActionSchema = z.object({
-  type: z.enum(["add", "delete", "toggle", "move"]),
-  title: z.string().optional().describe("Task title (required for add)"),
-  priority: z
-    .enum(["low", "medium", "high"])
-    .optional()
-    .describe("Task priority"),
-  dueDate: z.string().optional().describe("Due date (ISO string)"),
-  taskId: z.string().optional().describe("Task ID (required for delete/toggle/move)"),
-  status: z.enum(["todo", "in_progress", "done"]).optional().describe("Target status (required for move)"),
-});
-
 const server = new McpServer(
-  { name: "todo-app", version: "0.0.1" },
+  { name: "order-inbox", version: "0.0.1" },
   { capabilities: {} },
 ).registerWidget(
   "manage-tasks",
   {
-    description: "View and manage your to-do list",
+    description: "View incoming customer orders",
     _meta: {
       ui: {
         csp: {
@@ -35,12 +26,12 @@ const server = new McpServer(
   },
   {
     description:
-      "Call with no arguments to display the user's task board. Pass an `actions` array to add, move, or delete tasks — all actions are applied before returning the updated list.",
+      "Order Inbox: paste a raw WhatsApp/email order message to parse it with Claude and save it. Call with no arguments to list all orders.",
     inputSchema: {
-      actions: z
-        .array(ActionSchema)
+      rawMessage: z
+        .string()
         .optional()
-        .describe("Actions to perform before returning the task list"),
+        .describe("Raw WhatsApp/email order message to parse and save"),
     },
     annotations: {
       readOnlyHint: false,
@@ -48,16 +39,12 @@ const server = new McpServer(
       destructiveHint: false,
     },
   },
-  async ({ actions }, extra) => {
-    const userId = (extra.authInfo?.extra as any)?.userId as
-      | string
-      | undefined;
+  async ({ rawMessage }, extra) => {
+    const userId = (extra.authInfo?.extra as any)?.userId as string | undefined;
 
     if (!userId) {
       return {
-        content: [
-          { type: "text", text: "Please sign in to manage your tasks." },
-        ],
+        content: [{ type: "text", text: "Please sign in to manage orders." }],
         isError: true,
         _meta: {
           "mcp/www_authenticate": [
@@ -67,31 +54,91 @@ const server = new McpServer(
       };
     }
 
-    if (actions && actions.length > 0) {
-      await executeActions(userId, actions);
+    if (rawMessage && rawMessage.trim().length > 0) {
+      const today = new Date().toISOString().split("T")[0];
+
+      const parseResponse = await anthropic.messages.create({
+        model: "claude-opus-4-6",
+        max_tokens: 1024,
+        system:
+          "You are an order parser for a food distribution business. Output ONLY valid JSON wrapped between <json> and </json>. No markdown, no explanation.",
+        messages: [
+          {
+            role: "user",
+            content: `Today is ${today}.
+
+Wrap the JSON between <json> and </json>. Output nothing else.
+
+JSON schema:
+{
+  "customerName": "string",
+  "items": [{"product":"string","quantity": number}],
+  "deliveryDate": "YYYY-MM-DD or null"
+}
+
+Message:
+${rawMessage}`,
+          },
+        ],
+      });
+
+      const text =
+        parseResponse.content[0]?.type === "text"
+          ? parseResponse.content[0].text.trim()
+          : "";
+
+      
+
+      let parsed: {
+        customerName: string;
+        items: { product: string; quantity: number }[];
+        deliveryDate: string | null;
+      } = { customerName: "Unknown", items: [], deliveryDate: null };
+
+      try {
+        const match = text.match(/<json>\s*([\s\S]*?)\s*<\/json>/i);
+        const jsonString = match ? match[1] : text;
+        parsed = JSON.parse(jsonString);
+      } catch {
+        // keep defaults
+      }
+
+      const { error } = await insertOrder(
+        userId,
+        rawMessage,
+        parsed.customerName,
+        parsed.items,
+        parsed.deliveryDate,
+      );
+
+      if (error) {
+        return {
+          content: [{ type: "text", text: `Error saving order: ${error.message}` }],
+          isError: true,
+        };
+      }
     }
 
-    const { tasks, error } = await fetchTasks(userId);
+    const { orders, error } = await fetchOrders(userId);
 
     if (error) {
       return {
-        content: [
-          { type: "text", text: `Error fetching tasks: ${error.message}` },
-        ],
+        content: [{ type: "text", text: `Error fetching orders: ${error.message}` }],
         isError: true,
       };
     }
 
-    const todo = tasks.filter((t) => t.status === "todo").length;
-    const inProgress = tasks.filter((t) => t.status === "in_progress").length;
-    const done = tasks.filter((t) => t.status === "done").length;
+    const pending = orders.filter((o) => o.status === "pending").length;
+    const confirmed = orders.filter((o) => o.status === "confirmed").length;
+    const fulfilled = orders.filter((o) => o.status === "fulfilled").length;
+    const cancelled = orders.filter((o) => o.status === "cancelled").length;
 
     return {
-      structuredContent: { tasks },
+      structuredContent: { orders },
       content: [
         {
           type: "text",
-          text: `${todo} todo, ${inProgress} in progress, ${done} done. ${tasks.length} total tasks.`,
+          text: `${orders.length} orders: ${pending} pending, ${confirmed} confirmed, ${fulfilled} fulfilled, ${cancelled} cancelled.`,
         },
       ],
     };
