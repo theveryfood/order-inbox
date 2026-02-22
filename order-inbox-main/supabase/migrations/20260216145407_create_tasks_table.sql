@@ -1,0 +1,1 @@
+-- Replaced by order-inbox schema (see 20260220000000_create_orders_table.sql)
