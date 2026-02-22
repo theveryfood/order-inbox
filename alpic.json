@@ -3,5 +3,5 @@
   "installCommand": "pnpm i",
   "buildCommand": "pnpm run build",
   "startCommand": "pnpm run start",
-  "buildOutputDir": "dist"
+  "buildOutputDir": "web/dist"
 }
